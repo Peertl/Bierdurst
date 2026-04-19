@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Bierdurst</title>
+    <title>Kilo-Jork Bier Kampf</title>
     <style>
         body {
             background-color: #222;
@@ -41,7 +41,7 @@
 
     // --- PIXEL ART ---
     
-    // Fetter Typ: Unterer Teil (Hände) abgeschnitten für einen sauberen Schulter-Abschluss.
+    // Fetter Typ
     const spriteFetterTyp = [
         "0000000000044444400000000000",
         "0000000000433333340000000000",
@@ -78,6 +78,17 @@
         "00000422222222400000",
         "00000411111111400000",
         "00000044444444000000"
+    ];
+
+    const spriteBier = [
+        "00000000",
+        "00444400",
+        "04111140",
+        "04222244",
+        "04222241",
+        "04222244",
+        "00444400",
+        "00000000"
     ];
 
     const foodSprites = [
@@ -117,7 +128,8 @@
         beersSinceKlo: 0,  
         isParalyzed: false,
         gameStartTime: 0, 
-        gameEndTime: 0
+        gameEndTime: 0,
+        flyingBeers: [] 
     };
 
     function resetGame() {
@@ -130,6 +142,7 @@
         state.gameEndTime = 0;
         state.menu = 'intro';
         state.dialogText = "EIN WILDER BIERDURST\nGREIFT AN!";
+        state.flyingBeers = [];
         canvas.style.filter = 'none';
     }
 
@@ -206,11 +219,19 @@
 
         drawSprite(playerX, playerY, spriteFetterTyp, 2); 
         
+        // Rüberfliegendes Essen
         if (state.activeFood !== null) {
             let fx = enemyX - ((enemyX - (10 + 20)) * state.foodAnimProgress);
             let fy = 20 + ((playerY - 20) * state.foodAnimProgress) - Math.sin(state.foodAnimProgress * Math.PI) * 20;
             drawSprite(fx, fy, foodSprites[state.activeFood], 2); 
         }
+
+        // Rüberfliegende Biere (Unabhängig vom Spielstand gerendert)
+        state.flyingBeers.forEach(beer => {
+            let bx = enemyX - ((enemyX - (playerX + 20)) * beer.progress);
+            let by = 20 + ((playerY - 20) * beer.progress) - Math.sin(beer.progress * Math.PI) * 25;
+            drawSprite(bx, by, spriteBier, 2);
+        });
 
         drawText("FETTER TYP", 70, 70);
         drawText("KILO-JORK:", 70, 85);
@@ -288,6 +309,14 @@
             }
         }
 
+        // Animations-Logik: Fliegende Biere (Unabhängig aktualisiert!)
+        for (let i = state.flyingBeers.length - 1; i >= 0; i--) {
+            state.flyingBeers[i].progress += dt * 1.5; 
+            if (state.flyingBeers[i].progress >= 1) {
+                state.flyingBeers.splice(i, 1);
+            }
+        }
+
         // Kilo-Jork Verdauung
         if (!state.menu.startsWith('victory') && state.menu !== 'intro' && state.kj > 0) {
             let decayRate = 0.5; 
@@ -352,17 +381,18 @@
 
         if (state.menu === 'animating') return;
 
-        // Skip Victory Dialogs mit einem Tap
+        // Sieg-Text soll gnadenlos 4 Sekunden stehen bleiben (Skippen blockiert!)
         if (state.menu === 'victory') {
-            state.menu = 'victory_option';
             return;
         }
+        
         if (state.menu === 'victory_option') {
             state.menu = 'victory_end';
             state.dialogText = "Morgen wird wieder\nein anstrengender\nTag.";
             state.dialogTimer = 4;
             return;
         }
+        
         if (state.menu === 'victory_end') {
             resetGame();
             return;
@@ -413,12 +443,15 @@
                         state.kj += 1;
                         state.beersSinceKlo += 1; 
                         
+                        // Bier wird dem Array hinzugefügt und fliegt unabhängig los!
+                        state.flyingBeers.push({ progress: 0 });
+                        
                         if (state.kj >= state.maxKj) {
                             state.kj = state.maxKj;
                             state.gameEndTime = Date.now(); // Stoppt die Zeit!
                             state.dialogText = "Jetzt scheiße ich\nmeinem Bruder auf\nden Hocker.";
                             state.menu = 'victory';
-                            state.dialogTimer = 4;
+                            state.dialogTimer = 4; // Diese 4 Sekunden sind jetzt un-skippbar!
                         } else {
                             if (state.beersSinceKlo >= 10) { 
                                 state.isParalyzed = true; 
@@ -430,7 +463,7 @@
                     // 7 J. PREDIGT
                     state.dialogText = "7 Jahre...";
                     state.menu = 'dialog';
-                    state.dialogTimer = 3;
+                    state.dialogTimer = 3; // Startet bei 3 Sekunden, wechselt bei 2.
                 } else { 
                     state.menu = 'main'; 
                 }
