@@ -98,16 +98,16 @@
         }
     };
 
-    // Hintergrundmusik
+    // Hintergrundmusik (Höhere Frequenzen für bessere Hörbarkeit)
     let bgmPlaying = false;
     let lastNoteTime = 0;
     let currentNote = 0;
-    // Klassische 8-Bit Arcade Bassline
+    // Klassische 8-Bit Arcade Melodie (C-Dur Arpeggios)
     const bgmSequence = [
-        130.81, 130.81, 196.00, 130.81,
-        146.83, 146.83, 220.00, 146.83,
-        164.81, 164.81, 246.94, 164.81,
-        130.81, 196.00, 261.63, 196.00
+        261.63, 392.00, 523.25, 392.00,
+        293.66, 440.00, 587.33, 440.00,
+        329.63, 493.88, 659.25, 493.88,
+        261.63, 392.00, 523.25, 392.00
     ];
 
     function startBgm() {
@@ -190,7 +190,7 @@
         kj: 0, 
         maxKj: 17,
         menu: 'intro', 
-        nextMenu: 'main', // Wohin der Dialog danach springt
+        nextMenu: 'main', 
         dialogText: "EIN WILDER BIERDURST\nGREIFT AN!",
         dialogTimer: 0,
         animProgress: 0,
@@ -220,6 +220,7 @@
         state.dialogText = "EIN WILDER BIERDURST\nGREIFT AN!";
         state.flyingBeers = [];
         state.gameSpeed = 1.0;
+        bgmPlaying = false; // Musik stoppt bis zum neuen Start
         canvas.style.filter = 'none';
     }
 
@@ -354,7 +355,7 @@
         if (state.kj >= state.maxKj * 0.8) {
             if (!state.hasTriggeredBlur) {
                 state.isBlurry = true;
-                state.gameSpeed = 0.3; 
+                state.gameSpeed = 0.3; // Alles wird langsam
                 state.hasTriggeredBlur = true; 
             }
         } else {
@@ -363,11 +364,13 @@
 
         canvas.style.filter = state.isBlurry ? 'blur(2px)' : 'none';
 
-        // Arcade Hintergrundmusik - Spielt und verlangsamt sich im Rausch!
+        // Arcade Hintergrundmusik - Spielt und verlangsamt sich proportional zum gameSpeed!
         if (bgmPlaying && audioCtx && audioCtx.state === 'running') {
+            // Abstand zwischen den Noten passt sich der Spielgeschwindigkeit an
             let noteInterval = 0.15 / state.gameSpeed; 
             if (audioCtx.currentTime >= lastNoteTime + noteInterval) {
-                playTone(bgmSequence[currentNote], 'triangle', 0.1 / state.gameSpeed, 0.03, audioCtx.currentTime);
+                // Ton wird abgespielt, Länge passt sich ebenfalls an
+                playTone(bgmSequence[currentNote], 'square', 0.1 / state.gameSpeed, 0.05, audioCtx.currentTime);
                 currentNote = (currentNote + 1) % bgmSequence.length;
                 lastNoteTime = audioCtx.currentTime;
             }
@@ -424,7 +427,7 @@
                     resetGame();
                 } else {
                     state.menu = state.nextMenu || 'main'; 
-                    state.nextMenu = 'main'; // Zurücksetzen
+                    state.nextMenu = 'main'; 
                 }
             }
         }
@@ -475,7 +478,6 @@
         }
 
         if (state.menu === 'dialog') {
-            // Mimimi Text ist nicht überspringbar
             if (state.dialogText === "Mimimi") return; 
 
             sfx.blip();
@@ -507,7 +509,7 @@
                     sfx.blip();
                     state.menu = 'item'; 
                 }
-                else if (!isTopRow && !isLeftCol) { // RUN GEWÄHLT
+                else if (!isTopRow && !isLeftCol) { 
                     sfx.error();
                     if (state.isParalyzed) {
                         state.dialogText = "Geh lieber auf's Klo";
@@ -517,7 +519,7 @@
                         state.dialogText = "Du kannst doch\ngar nicht rennen,\nFettsack!";
                         state.menu = 'dialog';
                         state.dialogTimer = 3; 
-                        state.nextMenu = 'run_menu'; // Danach ab ins neue Run-Menü
+                        state.nextMenu = 'run_menu'; 
                     }
                 }
             }
@@ -526,14 +528,12 @@
             if (y > 104) {
                 const isTopRow = y < 124;
                 if (isTopRow) { 
-                    // RAGE QUIT
                     sfx.error();
                     state.dialogText = "Mimimi";
                     state.menu = 'dialog';
                     state.dialogTimer = 3;
-                    state.nextMenu = 'reset'; // Danach beenden/zurücksetzen
+                    state.nextMenu = 'reset'; 
                 } else {
-                    // ZURÜCK
                     sfx.blip();
                     state.menu = 'main';
                 }
