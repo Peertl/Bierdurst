@@ -36,12 +36,8 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
-    // --- FARBPALETTE ---
     const COLORS = [null, '#e0f0b0', '#808000', '#404000', '#000000'];
 
-    // --- PIXEL ART ---
-    
-    // Fetter Typ
     const spriteFetterTyp = [
         "0000000000044444400000000000",
         "0000000000433333340000000000",
@@ -112,7 +108,6 @@
         ]
     ];
 
-    // --- GAME STATE ---
     let state = {
         kj: 0, 
         maxKj: 17,
@@ -129,7 +124,8 @@
         isParalyzed: false,
         gameStartTime: 0, 
         gameEndTime: 0,
-        flyingBeers: [] 
+        flyingBeers: [],
+        gameSpeed: 1.0
     };
 
     function resetGame() {
@@ -143,10 +139,10 @@
         state.menu = 'intro';
         state.dialogText = "EIN WILDER BIERDURST\nGREIFT AN!";
         state.flyingBeers = [];
+        state.gameSpeed = 1.0;
         canvas.style.filter = 'none';
     }
 
-    // --- RENDERING ---
     function drawSprite(x, y, spriteArr, scale=2) {
         for (let row = 0; row < spriteArr.length; row++) {
             for (let col = 0; col < spriteArr[row].length; col++) {
@@ -183,7 +179,6 @@
         const h = 4;
         drawRect(x, y, w, h, 4); 
         drawRect(x + 1, y + 1, w - 2, h - 2, 1); 
-        
         const fillW = Math.max(0, (current / max) * (w - 2));
         if (fillW > 0) {
             drawRect(x + 1, y + 1, fillW, h - 2, 3); 
@@ -216,17 +211,14 @@
         drawText("BIERDURST", 10, 10);
         drawBar(10, 20, 60, 1, 1); 
         drawSprite(enemyX, 10, spriteBierdurst, 2);
-
         drawSprite(playerX, playerY, spriteFetterTyp, 2); 
         
-        // Rüberfliegendes Essen
         if (state.activeFood !== null) {
             let fx = enemyX - ((enemyX - (10 + 20)) * state.foodAnimProgress);
             let fy = 20 + ((playerY - 20) * state.foodAnimProgress) - Math.sin(state.foodAnimProgress * Math.PI) * 20;
             drawSprite(fx, fy, foodSprites[state.activeFood], 2); 
         }
 
-        // Rüberfliegende Biere (Unabhängig vom Spielstand gerendert)
         state.flyingBeers.forEach(beer => {
             let bx = enemyX - ((enemyX - (playerX + 20)) * beer.progress);
             let by = 20 + ((playerY - 20) * beer.progress) - Math.sin(beer.progress * Math.PI) * 25;
@@ -243,11 +235,9 @@
                 drawText(state.dialogText, 10, 112);
             } else if (state.menu === 'victory_option') {
                 drawBox(0, 104, 160, 40);
-                // Berechne die gestoppte Zeit
                 let diff = Math.floor((state.gameEndTime - state.gameStartTime) / 1000);
                 let m = Math.floor(diff / 60).toString().padStart(2, '0');
                 let s = (diff % 60).toString().padStart(2, '0');
-                
                 drawText(`Du hast ${m}:${s}`, 10, 108);
                 drawText(`gebraucht. Respekt!`, 10, 118);
                 drawText("▶ AUSRUHEN", 10, 130);
@@ -271,17 +261,17 @@
         }
     }
 
-    // --- GAME LOOP ---
     let lastTime = Date.now();
     function loop() {
         let now = Date.now();
         let dt = (now - lastTime) / 1000; 
         lastTime = now;
 
-        // Blur-Effekt Logik
+        // Blur und Geschwindigkeits-Effekt
         if (state.kj >= state.maxKj * 0.8) {
             if (!state.hasTriggeredBlur) {
                 state.isBlurry = true;
+                state.gameSpeed = 0.3; // Alles wird langsamer
                 state.hasTriggeredBlur = true; 
             }
         } else {
@@ -290,67 +280,57 @@
 
         canvas.style.filter = state.isBlurry ? 'blur(2px)' : 'none';
 
-        // Animations-Logik: Spiel-Intro
+        // Gesteuerte Spielzeit (für Animationen)
+        let sdt = dt * state.gameSpeed;
+
         if (state.menu === 'animating') {
-            state.animProgress += dt * 1.5; 
+            state.animProgress += sdt * 1.5; 
             if (state.animProgress >= 1) {
                 state.animProgress = 1;
                 state.menu = 'main'; 
-                state.gameStartTime = Date.now(); // Startet die Zeitmessung!
+                state.gameStartTime = Date.now(); 
             }
         }
         
-        // Animations-Logik: Fliegendes Essen 
         if (state.activeFood !== null) {
-            state.foodAnimProgress += dt * 0.8; 
+            state.foodAnimProgress += sdt * 0.8; 
             if (state.foodAnimProgress >= 1) {
                 state.activeFood = null;
                 state.foodBuffTimer = 3; 
             }
         }
 
-        // Animations-Logik: Fliegende Biere (Unabhängig aktualisiert!)
         for (let i = state.flyingBeers.length - 1; i >= 0; i--) {
-            state.flyingBeers[i].progress += dt * 1.5; 
+            state.flyingBeers[i].progress += sdt * 1.5; 
             if (state.flyingBeers[i].progress >= 1) {
                 state.flyingBeers.splice(i, 1);
             }
         }
 
-        // Kilo-Jork Verdauung
+        // Kilo-Jork Reduktion basiert auf ECHTER Zeit (dt), nicht verlangsamt
         if (!state.menu.startsWith('victory') && state.menu !== 'intro' && state.kj > 0) {
             let decayRate = 0.5; 
-            
-            // Verlangsamter Abbau durch Essen
             if (state.foodBuffTimer > 0) {
                 decayRate = 0.1; 
-                state.foodBuffTimer -= dt;
+                state.foodBuffTimer -= dt; 
             }
-
-            // Verlangsamter Abbau durch spezifische Texte
             if (state.menu === 'dialog' && (state.dialogText.includes("Aaah, das tut") || state.dialogText.includes("Geh lieber auf's Klo"))) {
                 decayRate = 0.1;
             }
-
-            state.kj -= decayRate * dt;
+            state.kj -= decayRate * dt; 
             if (state.kj < 0) state.kj = 0;
         }
 
-        // Dialog-Timer
         if (state.menu === 'dialog' && state.dialogTimer > 0) {
-            state.dialogTimer -= dt;
-            
-            // Text-Update für 7 Jahre Predigt nach 1 Sekunde
+            state.dialogTimer -= dt; 
             if (state.dialogText === "7 Jahre..." && state.dialogTimer <= 2) {
                 state.dialogText = "7 Jahre...\nDie Attacke war\nnicht effektiv.";
             }
-
             if (state.dialogTimer <= 0) {
                 state.menu = 'main'; 
             }
         }
         
-        // Victory Sequenz Timer
         if (state.menu === 'victory' && state.dialogTimer > 0) {
             state.dialogTimer -= dt;
             if (state.dialogTimer <= 0) state.menu = 'victory_option';
@@ -364,12 +344,10 @@
         requestAnimationFrame(loop);
     }
 
-    // --- TOUCH STEUERUNG ---
     canvas.addEventListener('pointerdown', (e) => {
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
-        
         const x = (e.clientX - rect.left) * scaleX;
         const y = (e.clientY - rect.top) * scaleY;
 
@@ -380,11 +358,7 @@
         }
 
         if (state.menu === 'animating') return;
-
-        // Sieg-Text soll gnadenlos 4 Sekunden stehen bleiben (Skippen blockiert!)
-        if (state.menu === 'victory') {
-            return;
-        }
+        if (state.menu === 'victory') return;
         
         if (state.menu === 'victory_option') {
             state.menu = 'victory_end';
@@ -392,7 +366,6 @@
             state.dialogTimer = 4;
             return;
         }
-        
         if (state.menu === 'victory_end') {
             resetGame();
             return;
@@ -408,15 +381,12 @@
             if (x > 70 && y > 104) {
                 const isTopRow = y < 124;
                 const isLeftCol = x < 120;
-
                 if (isTopRow && isLeftCol) { 
                     if (state.isParalyzed) {
                         state.dialogText = "Geh lieber auf's Klo";
                         state.menu = 'dialog';
                         state.dialogTimer = 1;
-                    } else {
-                        state.menu = 'fight'; 
-                    }
+                    } else { state.menu = 'fight'; }
                 }
                 else if (!isTopRow && isLeftCol) { state.menu = 'item'; }
                 else if (!isTopRow && !isLeftCol) {
@@ -436,46 +406,34 @@
             if (y > 104) {
                 const isTopRow = y < 124;
                 const isLeftCol = x < 85;
-
                 if (isTopRow && isLeftCol) { 
-                    // BIER TRINKEN
                     if (state.kj < state.maxKj) {
                         state.kj += 1;
                         state.beersSinceKlo += 1; 
-                        
-                        // Bier wird dem Array hinzugefügt und fliegt unabhängig los!
                         state.flyingBeers.push({ progress: 0 });
-                        
                         if (state.kj >= state.maxKj) {
                             state.kj = state.maxKj;
-                            state.gameEndTime = Date.now(); // Stoppt die Zeit!
+                            state.gameEndTime = Date.now();
                             state.dialogText = "Jetzt scheiße ich\nmeinem Bruder auf\nden Hocker.";
                             state.menu = 'victory';
-                            state.dialogTimer = 4; // Diese 4 Sekunden sind jetzt un-skippbar!
+                            state.dialogTimer = 4;
                         } else {
-                            if (state.beersSinceKlo >= 10) { 
-                                state.isParalyzed = true; 
-                            }
+                            if (state.beersSinceKlo >= 10) state.isParalyzed = true; 
                             state.menu = 'main';
                         }
                     }
                 } else if (!isTopRow && isLeftCol) { 
-                    // 7 J. PREDIGT
                     state.dialogText = "7 Jahre...";
                     state.menu = 'dialog';
-                    state.dialogTimer = 3; // Startet bei 3 Sekunden, wechselt bei 2.
-                } else { 
-                    state.menu = 'main'; 
-                }
+                    state.dialogTimer = 3;
+                } else { state.menu = 'main'; }
             }
         }
         else if (state.menu === 'item') {
             if (y > 104) {
                 const isTopRow = y < 124;
                 const isLeftCol = x < 85; 
-
                 if (isTopRow && isLeftCol) { 
-                    // KLO
                     state.isParalyzed = false; 
                     state.beersSinceKlo = 0;   
                     state.dialogText = "Aaah, das tut\ngut.";
@@ -483,23 +441,20 @@
                     state.dialogTimer = 1; 
                 } 
                 else if (!isTopRow && isLeftCol) {
-                    // SUPERSOLDAT 
+                    // SUPERSOLDAT - Hebt Blur und Langsamkeit auf
                     if (state.isParalyzed) {
                         state.dialogText = "Geh lieber auf's Klo";
                         state.menu = 'dialog';
                         state.dialogTimer = 1;
                         return;
                     }
-                    if (state.isBlurry) {
-                        state.isBlurry = false;
-                    }
+                    state.isBlurry = false;
+                    state.gameSpeed = 1.0; // Geschwindigkeit wieder normal
                     state.dialogText = "Weiter so,\nSoldat!";
-                    console.log("Weiter so, Soldat!"); 
                     state.menu = 'dialog';
                     state.dialogTimer = 2; 
                 } 
                 else if (isTopRow && !isLeftCol) {
-                    // ESSEN
                     if (state.isParalyzed) {
                         state.dialogText = "Geh lieber auf's Klo";
                         state.menu = 'dialog';
@@ -510,10 +465,7 @@
                     state.activeFood = Math.floor(Math.random() * foodSprites.length); 
                     state.foodAnimProgress = 0;
                 } 
-                else if (!isTopRow && !isLeftCol) {
-                    // ZURÜCK
-                    state.menu = 'main'; 
-                }
+                else if (!isTopRow && !isLeftCol) { state.menu = 'main'; }
             }
         }
     });
