@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Jorkémon - Gold Edition</title>
+    <title>Kilo-Jork Bier Kampf</title>
     <style>
         body {
             background-color: #222;
@@ -102,7 +102,6 @@
     let bgmPlaying = false;
     let lastNoteTime = 0;
     let currentNote = 0;
-    // Klassische 8-Bit Arcade Melodie (C-Dur Arpeggios)
     const bgmSequence = [
         261.63, 392.00, 523.25, 392.00,
         293.66, 440.00, 587.33, 440.00,
@@ -116,7 +115,6 @@
             if (audioCtx) lastNoteTime = audioCtx.currentTime;
         }
     }
-
 
     // --- FARBPALETTE ---
     const COLORS = [null, '#e0f0b0', '#808000', '#404000', '#000000'];
@@ -183,6 +181,12 @@
             "0041142222241140", "0004422222224400", "0004222222222400", "0004222222222400",
             "0004222222222400", "0000422222224000", "0000044444440000", "0000000000000000",
             "0000000000000000", "0000000000000000", "0000000000000000", "0000000000000000"
+        ],
+        [ // 2: Burger
+            "0000000000000000", "0000044444400000", "0000411111140000", "0004111111114000",
+            "0004444444444000", "0042222222222400", "0044444444444400", "0043333333333400",
+            "0044444444444400", "0004111111114000", "0000444444440000", "0000000000000000",
+            "0000000000000000", "0000000000000000", "0000000000000000", "0000000000000000"
         ]
     ];
 
@@ -220,7 +224,7 @@
         state.dialogText = "EIN WILDER BIERDURST\nGREIFT AN!";
         state.flyingBeers = [];
         state.gameSpeed = 1.0;
-        bgmPlaying = false; // Musik stoppt bis zum neuen Start
+        bgmPlaying = false; 
         canvas.style.filter = 'none';
     }
 
@@ -355,7 +359,7 @@
         if (state.kj >= state.maxKj * 0.8) {
             if (!state.hasTriggeredBlur) {
                 state.isBlurry = true;
-                state.gameSpeed = 0.3; // Alles wird langsam
+                state.gameSpeed = 0.3; 
                 state.hasTriggeredBlur = true; 
             }
         } else {
@@ -364,12 +368,9 @@
 
         canvas.style.filter = state.isBlurry ? 'blur(2px)' : 'none';
 
-        // Arcade Hintergrundmusik - Spielt und verlangsamt sich proportional zum gameSpeed!
         if (bgmPlaying && audioCtx && audioCtx.state === 'running') {
-            // Abstand zwischen den Noten passt sich der Spielgeschwindigkeit an
             let noteInterval = 0.15 / state.gameSpeed; 
             if (audioCtx.currentTime >= lastNoteTime + noteInterval) {
-                // Ton wird abgespielt, Länge passt sich ebenfalls an
                 playTone(bgmSequence[currentNote], 'square', 0.1 / state.gameSpeed, 0.05, audioCtx.currentTime);
                 currentNote = (currentNote + 1) % bgmSequence.length;
                 lastNoteTime = audioCtx.currentTime;
@@ -415,7 +416,6 @@
             if (state.kj < 0) state.kj = 0;
         }
 
-        // Dialog-Timer Behandlung
         if (state.menu === 'dialog' && state.dialogTimer > 0) {
             state.dialogTimer -= dt; 
             if (state.dialogText === "7 Jahre..." && state.dialogTimer <= 2) {
