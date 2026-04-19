@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bierdurst</title>
+    <style>
+        body {
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+            touch-action: none;
+        }
+        #gameCanvas {
+            image-rendering: pixelated;
+            border: 4px solid #000;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 160 / 144;
+            background-color: #e0f0b0;
+            transition: filter 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="160" height="144"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // --- FARBPALETTE ---
+    const COLORS = [null, '#e0f0b0', '#808000', '#404000', '#000000'];
+
+    // --- PIXEL ART ---
+    
+    // Fetter Typ: Unterer Teil (Hände) abgeschnitten für einen sauberen Schulter-Abschluss.
+    const spriteFetterTyp = [
+        "0000000000044444400000000000",
+        "0000000000433333340000000000",
+        "0000000004333333334000000000",
+        "0000000043333333333400000000",
+        "0000000043333333333400000000",
+        "0000000433333333333340000000",
+        "0000000433333333333340000000",
+        "0000000413333333333140000000",
+        "0000000413333333333140000000",
+        "0000000044444444444400000000",
+        "0000004422222222222244000000",
+        "0000442222222222222222440000",
+        "0044222222222222222222224400",
+        "0422222222222222222222222240",
+        "4222222222222222222222222224",
+        "4444444444444444444444444444"
+    ];
+
+    const spriteBierdurst = [
+        "00000000000000000000",
+        "00000004444440000000",
+        "00000041111114000000",
+        "00000411444111400000", 
+        "00000411111111400000",
+        "00000422222222400000",
+        "00000422222222400000",
+        "00000423333332400000", 
+        "00000423111132400000",
+        "00000423144132400000", 
+        "00000423111132400000",
+        "00000423333332400000", 
+        "00000422222222400000",
+        "00000422222222400000",
+        "00000411111111400000",
+        "00000044444444000000"
+    ];
+
+    const foodSprites = [
+        [ // 0: Pizza
+            "0000000000000000", "0000044444400000", "0000411111140000", "0004133111314000",
+            "0004133111314000", "0004111133114000", "0000411133140000", "0000411111140000",
+            "0000041331400000", "0000041331400000", "0000004114000000", "0000004114000000",
+            "0000000440000000", "0000000000000000", "0000000000000000", "0000000000000000"
+        ],
+        [ // 1: Brathähnchen
+            "0000000000000000", "0000000440000000", "0000004224400000", "0004442222244400",
+            "0041142222241140", "0004422222224400", "0004222222222400", "0004222222222400",
+            "0004222222222400", "0000422222224000", "0000044444440000", "0000000000000000",
+            "0000000000000000", "0000000000000000", "0000000000000000", "0000000000000000"
+        ],
+        [ // 2: Burger
+            "0000000000000000", "0000044444400000", "0000411111140000", "0004111111114000",
+            "0004444444444000", "0042222222222400", "0044444444444400", "0043333333333400",
+            "0044444444444400", "0004111111114000", "0000444444440000", "0000000000000000",
+            "0000000000000000", "0000000000000000", "0000000000000000", "0000000000000000"
+        ]
+    ];
+
+    // --- GAME STATE ---
+    let state = {
+        kj: 0, 
+        maxKj: 17,
+        menu: 'intro', 
+        dialogText: "EIN WILDER BIERDURST\nGREIFT AN!",
+        dialogTimer: 0,
+        animProgress: 0,
+        isBlurry: false, 
+        hasTriggeredBlur: false, 
+        foodBuffTimer: 0, 
+        activeFood: null, 
+        foodAnimProgress: 0,
+        beersSinceKlo: 0,  
+        isParalyzed: false,
+        gameStartTime: 0, 
+        gameEndTime: 0
+    };
+
+    function resetGame() {
+        state.kj = 0;
+        state.beersSinceKlo = 0;
+        state.isParalyzed = false;
+        state.isBlurry = false;
+        state.hasTriggeredBlur = false;
+        state.gameStartTime = 0;
+        state.gameEndTime = 0;
+        state.menu = 'intro';
+        state.dialogText = "EIN WILDER BIERDURST\nGREIFT AN!";
+        canvas.style.filter = 'none';
+    }
+
+    // --- RENDERING ---
+    function drawSprite(x, y, spriteArr, scale=2) {
+        for (let row = 0; row < spriteArr.length; row++) {
+            for (let col = 0; col < spriteArr[row].length; col++) {
+                const colorIndex = parseInt(spriteArr[row][col]);
+                if (colorIndex > 0) {
+                    ctx.fillStyle = COLORS[colorIndex];
+                    ctx.fillRect(x + col * scale, y + row * scale, scale, scale);
+                }
+            }
+        }
+    }
+
+    function drawRect(x, y, w, h, colorIndex) {
+        ctx.fillStyle = COLORS[colorIndex];
+        ctx.fillRect(x, y, w, h);
+    }
+
+    function drawText(text, x, y, colorIndex = 4) {
+        ctx.fillStyle = COLORS[colorIndex];
+        ctx.font = '8px monospace';
+        ctx.textBaseline = 'top';
+        const lines = text.split('\n');
+        lines.forEach((line, index) => {
+            ctx.fillText(line, x, y + (index * 12)); 
+        });
+    }
+
+    function drawBox(x, y, w, h) {
+        drawRect(x, y, w, h, 4); 
+        drawRect(x + 1, y + 1, w - 2, h - 2, 1); 
+    }
+
+    function drawBar(x, y, w, current, max) {
+        const h = 4;
+        drawRect(x, y, w, h, 4); 
+        drawRect(x + 1, y + 1, w - 2, h - 2, 1); 
+        
+        const fillW = Math.max(0, (current / max) * (w - 2));
+        if (fillW > 0) {
+            drawRect(x + 1, y + 1, fillW, h - 2, 3); 
+        }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawRect(0, 0, 160, 144, 1);
+
+        if (state.menu === 'intro') {
+            drawBox(20, 40, 120, 60);
+            drawText(state.dialogText, 30, 50);
+            drawText("▶ TIPPE ZUM START", 30, 80);
+            return;
+        }
+
+        let playerX = 10; 
+        let playerY = 60;
+        let enemyX = 110;
+
+        if (state.menu === 'animating') {
+            playerX = -50 + (60 * state.animProgress);
+            enemyX = 160 - (50 * state.animProgress);
+        } else if (state.isParalyzed && !state.menu.startsWith('victory')) {
+            playerX += Math.sin(Date.now() / 150) * 4;
+            playerY -= Math.abs(Math.sin(Date.now() / 100)) * 3;
+        }
+
+        drawText("BIERDURST", 10, 10);
+        drawBar(10, 20, 60, 1, 1); 
+        drawSprite(enemyX, 10, spriteBierdurst, 2);
+
+        drawSprite(playerX, playerY, spriteFetterTyp, 2); 
+        
+        if (state.activeFood !== null) {
+            let fx = enemyX - ((enemyX - (10 + 20)) * state.foodAnimProgress);
+            let fy = 20 + ((playerY - 20) * state.foodAnimProgress) - Math.sin(state.foodAnimProgress * Math.PI) * 20;
+            drawSprite(fx, fy, foodSprites[state.activeFood], 2); 
+        }
+
+        drawText("FETTER TYP", 70, 70);
+        drawText("KILO-JORK:", 70, 85);
+        drawBar(70, 95, 80, state.kj, state.maxKj);
+
+        if (state.menu !== 'animating') {
+            if (state.menu === 'dialog' || state.menu === 'victory' || state.menu === 'victory_end') {
+                drawBox(0, 104, 160, 40);
+                drawText(state.dialogText, 10, 112);
+            } else if (state.menu === 'victory_option') {
+                drawBox(0, 104, 160, 40);
+                // Berechne die gestoppte Zeit
+                let diff = Math.floor((state.gameEndTime - state.gameStartTime) / 1000);
+                let m = Math.floor(diff / 60).toString().padStart(2, '0');
+                let s = (diff % 60).toString().padStart(2, '0');
+                
+                drawText(`Du hast ${m}:${s}`, 10, 108);
+                drawText(`gebraucht. Respekt!`, 10, 118);
+                drawText("▶ AUSRUHEN", 10, 130);
+            } else if (state.menu === 'fight') {
+                drawBox(0, 104, 160, 40);
+                drawText("▶ BIER TRINKEN", 10, 110);
+                drawText("▶ 7 J. PREDIGT", 10, 126);
+                drawText("▶ ZURÜCK", 90, 126);
+            } else if (state.menu === 'item') {
+                drawBox(0, 104, 160, 40);
+                drawText("▶ KLO", 10, 110);
+                drawText("▶ SUPERSOLDAT", 10, 126);
+                drawText("▶ ESSEN", 90, 110);
+                drawText("▶ ZURÜCK", 90, 126);
+            } else {
+                drawBox(70, 104, 90, 40);
+                drawText("FIGHT", 80, 110);
+                drawText("ITEM", 80, 126);
+                drawText("RUN", 125, 126);
+            }
+        }
+    }
+
+    // --- GAME LOOP ---
+    let lastTime = Date.now();
+    function loop() {
+        let now = Date.now();
+        let dt = (now - lastTime) / 1000; 
+        lastTime = now;
+
+        // Blur-Effekt Logik
+        if (state.kj >= state.maxKj * 0.8) {
+            if (!state.hasTriggeredBlur) {
+                state.isBlurry = true;
+                state.hasTriggeredBlur = true; 
+            }
+        } else {
+            state.hasTriggeredBlur = false;
+        }
+
+        canvas.style.filter = state.isBlurry ? 'blur(2px)' : 'none';
+
+        // Animations-Logik: Spiel-Intro
+        if (state.menu === 'animating') {
+            state.animProgress += dt * 1.5; 
+            if (state.animProgress >= 1) {
+                state.animProgress = 1;
+                state.menu = 'main'; 
+                state.gameStartTime = Date.now(); // Startet die Zeitmessung!
+            }
+        }
+        
+        // Animations-Logik: Fliegendes Essen 
+        if (state.activeFood !== null) {
+            state.foodAnimProgress += dt * 0.8; 
+            if (state.foodAnimProgress >= 1) {
+                state.activeFood = null;
+                state.foodBuffTimer = 3; 
+            }
+        }
+
+        // Kilo-Jork Verdauung
+        if (!state.menu.startsWith('victory') && state.menu !== 'intro' && state.kj > 0) {
+            let decayRate = 0.5; 
+            
+            // Verlangsamter Abbau durch Essen
+            if (state.foodBuffTimer > 0) {
+                decayRate = 0.1; 
+                state.foodBuffTimer -= dt;
+            }
+
+            // Verlangsamter Abbau durch spezifische Texte
+            if (state.menu === 'dialog' && (state.dialogText.includes("Aaah, das tut") || state.dialogText.includes("Geh lieber auf's Klo"))) {
+                decayRate = 0.1;
+            }
+
+            state.kj -= decayRate * dt;
+            if (state.kj < 0) state.kj = 0;
+        }
+
+        // Dialog-Timer
+        if (state.menu === 'dialog' && state.dialogTimer > 0) {
+            state.dialogTimer -= dt;
+            
+            // Text-Update für 7 Jahre Predigt nach 1 Sekunde
+            if (state.dialogText === "7 Jahre..." && state.dialogTimer <= 2) {
+                state.dialogText = "7 Jahre...\nDie Attacke war\nnicht effektiv.";
+            }
+
+            if (state.dialogTimer <= 0) {
+                state.menu = 'main'; 
+            }
+        }
+        
+        // Victory Sequenz Timer
+        if (state.menu === 'victory' && state.dialogTimer > 0) {
+            state.dialogTimer -= dt;
+            if (state.dialogTimer <= 0) state.menu = 'victory_option';
+        }
+        if (state.menu === 'victory_end' && state.dialogTimer > 0) {
+            state.dialogTimer -= dt;
+            if (state.dialogTimer <= 0) resetGame();
+        }
+
+        draw();
+        requestAnimationFrame(loop);
+    }
+
+    // --- TOUCH STEUERUNG ---
+    canvas.addEventListener('pointerdown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+
+        if (state.menu === 'intro') {
+            state.menu = 'animating';
+            state.animProgress = 0;
+            return;
+        }
+
+        if (state.menu === 'animating') return;
+
+        // Skip Victory Dialogs mit einem Tap
+        if (state.menu === 'victory') {
+            state.menu = 'victory_option';
+            return;
+        }
+        if (state.menu === 'victory_option') {
+            state.menu = 'victory_end';
+            state.dialogText = "Morgen wird wieder\nein anstrengender\nTag.";
+            state.dialogTimer = 4;
+            return;
+        }
+        if (state.menu === 'victory_end') {
+            resetGame();
+            return;
+        }
+
+        if (state.menu === 'dialog' && state.dialogTimer > 0) return;
+        if (state.menu === 'dialog') {
+            state.menu = 'main';
+            return;
+        }
+
+        if (state.menu === 'main') {
+            if (x > 70 && y > 104) {
+                const isTopRow = y < 124;
+                const isLeftCol = x < 120;
+
+                if (isTopRow && isLeftCol) { 
+                    if (state.isParalyzed) {
+                        state.dialogText = "Geh lieber auf's Klo";
+                        state.menu = 'dialog';
+                        state.dialogTimer = 1;
+                    } else {
+                        state.menu = 'fight'; 
+                    }
+                }
+                else if (!isTopRow && isLeftCol) { state.menu = 'item'; }
+                else if (!isTopRow && !isLeftCol) {
+                    if (state.isParalyzed) {
+                        state.dialogText = "Geh lieber auf's Klo";
+                        state.menu = 'dialog';
+                        state.dialogTimer = 1;
+                    } else {
+                        state.dialogText = "Du kannst doch\ngar nicht rennen,\nFettsack!";
+                        state.menu = 'dialog';
+                        state.dialogTimer = 3; 
+                    }
+                }
+            }
+        } 
+        else if (state.menu === 'fight') {
+            if (y > 104) {
+                const isTopRow = y < 124;
+                const isLeftCol = x < 85;
+
+                if (isTopRow && isLeftCol) { 
+                    // BIER TRINKEN
+                    if (state.kj < state.maxKj) {
+                        state.kj += 1;
+                        state.beersSinceKlo += 1; 
+                        
+                        if (state.kj >= state.maxKj) {
+                            state.kj = state.maxKj;
+                            state.gameEndTime = Date.now(); // Stoppt die Zeit!
+                            state.dialogText = "Jetzt scheiße ich\nmeinem Bruder auf\nden Hocker.";
+                            state.menu = 'victory';
+                            state.dialogTimer = 4;
+                        } else {
+                            if (state.beersSinceKlo >= 10) { 
+                                state.isParalyzed = true; 
+                            }
+                            state.menu = 'main';
+                        }
+                    }
+                } else if (!isTopRow && isLeftCol) { 
+                    // 7 J. PREDIGT
+                    state.dialogText = "7 Jahre...";
+                    state.menu = 'dialog';
+                    state.dialogTimer = 3;
+                } else { 
+                    state.menu = 'main'; 
+                }
+            }
+        }
+        else if (state.menu === 'item') {
+            if (y > 104) {
+                const isTopRow = y < 124;
+                const isLeftCol = x < 85; 
+
+                if (isTopRow && isLeftCol) { 
+                    // KLO
+                    state.isParalyzed = false; 
+                    state.beersSinceKlo = 0;   
+                    state.dialogText = "Aaah, das tut\ngut.";
+                    state.menu = 'dialog';
+                    state.dialogTimer = 1; 
+                } 
+                else if (!isTopRow && isLeftCol) {
+                    // SUPERSOLDAT 
+                    if (state.isParalyzed) {
+                        state.dialogText = "Geh lieber auf's Klo";
+                        state.menu = 'dialog';
+                        state.dialogTimer = 1;
+                        return;
+                    }
+                    if (state.isBlurry) {
+                        state.isBlurry = false;
+                    }
+                    state.dialogText = "Weiter so,\nSoldat!";
+                    console.log("Weiter so, Soldat!"); 
+                    state.menu = 'dialog';
+                    state.dialogTimer = 2; 
+                } 
+                else if (isTopRow && !isLeftCol) {
+                    // ESSEN
+                    if (state.isParalyzed) {
+                        state.dialogText = "Geh lieber auf's Klo";
+                        state.menu = 'dialog';
+                        state.dialogTimer = 1;
+                        return;
+                    }
+                    state.menu = 'main'; 
+                    state.activeFood = Math.floor(Math.random() * foodSprites.length); 
+                    state.foodAnimProgress = 0;
+                } 
+                else if (!isTopRow && !isLeftCol) {
+                    // ZURÜCK
+                    state.menu = 'main'; 
+                }
+            }
+        }
+    });
+
+    requestAnimationFrame(loop);
+</script>
+
+</body>
+</html>
