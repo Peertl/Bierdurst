@@ -98,7 +98,7 @@
         }
     };
 
-    // Hintergrundmusik (Höhere Frequenzen für bessere Hörbarkeit)
+    // Hintergrundmusik
     let bgmPlaying = false;
     let lastNoteTime = 0;
     let currentNote = 0;
@@ -158,15 +158,20 @@
         "00000044444444000000"
     ];
 
+    // Neues, besseres Bierglas-Sprite (höher, mit überlaufendem Schaum und Henkel-Lücke)
     const spriteBier = [
-        "00000000",
-        "00444400",
-        "04111140",
-        "04222244",
-        "04222241",
-        "04222244",
-        "00444400",
-        "00000000"
+        "0000000000",
+        "0004444000", // Schaum-Kontur oben
+        "0041111400", // Schaum
+        "0411111140", // Schaum fließt leicht über
+        "0042222400", // Bier-Start
+        "0042222440", // Bier + Henkel Ansatz oben
+        "0042222404", // Bier + Henkel Lücke
+        "0042222404", // Bier + Henkel Lücke
+        "0042222440", // Bier + Henkel Ansatz unten
+        "0042222400", // Bier unten
+        "0004444000", // Glasboden
+        "0000000000"
     ];
 
     const foodSprites = [
@@ -416,6 +421,7 @@
             if (state.kj < 0) state.kj = 0;
         }
 
+        // Dialog-Timer Behandlung
         if (state.menu === 'dialog' && state.dialogTimer > 0) {
             state.dialogTimer -= dt; 
             if (state.dialogText === "7 Jahre..." && state.dialogTimer <= 2) {
