@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Jorkémon - Goldene Edition</title>
+    <title>Kilo-Jork Bier Kampf</title>
     <style>
         body {
             background-color: #222;
@@ -36,8 +36,92 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
 
+    // --- GAME BOY SOUND ENGINE (Web Audio API) ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new AudioContext();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    function playTone(freq, type, duration, vol=0.05, startTime=null) {
+        if (!audioCtx) return;
+        const t = startTime !== null ? startTime : audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type; 
+        osc.frequency.setValueAtTime(freq, t);
+        
+        gain.gain.setValueAtTime(vol, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + duration);
+    }
+
+    // Sound-Effekte
+    const sfx = {
+        blip: () => playTone(880, 'square', 0.1),
+        error: () => playTone(150, 'sawtooth', 0.2, 0.08),
+        drink: () => {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.2); 
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        },
+        predigt: () => playTone(100, 'sawtooth', 0.6, 0.1),
+        item: () => {
+            playTone(440, 'square', 0.1);
+            setTimeout(() => playTone(660, 'square', 0.15), 100);
+            setTimeout(() => playTone(880, 'square', 0.2), 200);
+        },
+        victory: () => {
+            playTone(440, 'square', 0.1);
+            setTimeout(() => playTone(440, 'square', 0.1), 150);
+            setTimeout(() => playTone(440, 'square', 0.1), 300);
+            setTimeout(() => playTone(587.33, 'square', 0.4), 450); 
+        }
+    };
+
+    // Hintergrundmusik
+    let bgmPlaying = false;
+    let lastNoteTime = 0;
+    let currentNote = 0;
+    // Klassische 8-Bit Arcade Bassline
+    const bgmSequence = [
+        130.81, 130.81, 196.00, 130.81,
+        146.83, 146.83, 220.00, 146.83,
+        164.81, 164.81, 246.94, 164.81,
+        130.81, 196.00, 261.63, 196.00
+    ];
+
+    function startBgm() {
+        if (!bgmPlaying) {
+            bgmPlaying = true;
+            if (audioCtx) lastNoteTime = audioCtx.currentTime;
+        }
+    }
+
+
+    // --- FARBPALETTE ---
     const COLORS = [null, '#e0f0b0', '#808000', '#404000', '#000000'];
 
+    // --- PIXEL ART ---
     const spriteFetterTyp = [
         "0000000000044444400000000000",
         "0000000000433333340000000000",
@@ -99,12 +183,6 @@
             "0041142222241140", "0004422222224400", "0004222222222400", "0004222222222400",
             "0004222222222400", "0000422222224000", "0000044444440000", "0000000000000000",
             "0000000000000000", "0000000000000000", "0000000000000000", "0000000000000000"
-        ],
-        [ // 2: Burger
-            "0000000000000000", "0000044444400000", "0000411111140000", "0004111111114000",
-            "0004444444444000", "0042222222222400", "0044444444444400", "0043333333333400",
-            "0044444444444400", "0004111111114000", "0000444444440000", "0000000000000000",
-            "0000000000000000", "0000000000000000", "0000000000000000", "0000000000000000"
         ]
     ];
 
@@ -112,6 +190,7 @@
         kj: 0, 
         maxKj: 17,
         menu: 'intro', 
+        nextMenu: 'main', // Wohin der Dialog danach springt
         dialogText: "EIN WILDER BIERDURST\nGREIFT AN!",
         dialogTimer: 0,
         animProgress: 0,
@@ -137,6 +216,7 @@
         state.gameStartTime = 0;
         state.gameEndTime = 0;
         state.menu = 'intro';
+        state.nextMenu = 'main';
         state.dialogText = "EIN WILDER BIERDURST\nGREIFT AN!";
         state.flyingBeers = [];
         state.gameSpeed = 1.0;
@@ -252,6 +332,10 @@
                 drawText("▶ SUPERSOLDAT", 10, 126);
                 drawText("▶ ESSEN", 90, 110);
                 drawText("▶ ZURÜCK", 90, 126);
+            } else if (state.menu === 'run_menu') {
+                drawBox(0, 104, 160, 40);
+                drawText("▶ RAGE QUIT", 10, 110);
+                drawText("▶ ZURÜCK", 10, 126);
             } else {
                 drawBox(70, 104, 90, 40);
                 drawText("FIGHT", 80, 110);
@@ -267,11 +351,10 @@
         let dt = (now - lastTime) / 1000; 
         lastTime = now;
 
-        // Blur und Geschwindigkeits-Effekt
         if (state.kj >= state.maxKj * 0.8) {
             if (!state.hasTriggeredBlur) {
                 state.isBlurry = true;
-                state.gameSpeed = 0.3; // Alles wird langsamer
+                state.gameSpeed = 0.3; 
                 state.hasTriggeredBlur = true; 
             }
         } else {
@@ -280,7 +363,16 @@
 
         canvas.style.filter = state.isBlurry ? 'blur(2px)' : 'none';
 
-        // Gesteuerte Spielzeit (für Animationen)
+        // Arcade Hintergrundmusik - Spielt und verlangsamt sich im Rausch!
+        if (bgmPlaying && audioCtx && audioCtx.state === 'running') {
+            let noteInterval = 0.15 / state.gameSpeed; 
+            if (audioCtx.currentTime >= lastNoteTime + noteInterval) {
+                playTone(bgmSequence[currentNote], 'triangle', 0.1 / state.gameSpeed, 0.03, audioCtx.currentTime);
+                currentNote = (currentNote + 1) % bgmSequence.length;
+                lastNoteTime = audioCtx.currentTime;
+            }
+        }
+
         let sdt = dt * state.gameSpeed;
 
         if (state.menu === 'animating') {
@@ -307,7 +399,6 @@
             }
         }
 
-        // Kilo-Jork Reduktion basiert auf ECHTER Zeit (dt), nicht verlangsamt
         if (!state.menu.startsWith('victory') && state.menu !== 'intro' && state.kj > 0) {
             let decayRate = 0.5; 
             if (state.foodBuffTimer > 0) {
@@ -321,13 +412,20 @@
             if (state.kj < 0) state.kj = 0;
         }
 
+        // Dialog-Timer Behandlung
         if (state.menu === 'dialog' && state.dialogTimer > 0) {
             state.dialogTimer -= dt; 
             if (state.dialogText === "7 Jahre..." && state.dialogTimer <= 2) {
                 state.dialogText = "7 Jahre...\nDie Attacke war\nnicht effektiv.";
             }
+            
             if (state.dialogTimer <= 0) {
-                state.menu = 'main'; 
+                if (state.nextMenu === 'reset') {
+                    resetGame();
+                } else {
+                    state.menu = state.nextMenu || 'main'; 
+                    state.nextMenu = 'main'; // Zurücksetzen
+                }
             }
         }
         
@@ -351,7 +449,11 @@
         const x = (e.clientX - rect.left) * scaleX;
         const y = (e.clientY - rect.top) * scaleY;
 
+        initAudio();
+
         if (state.menu === 'intro') {
+            startBgm();
+            sfx.blip();
             state.menu = 'animating';
             state.animProgress = 0;
             return;
@@ -361,6 +463,7 @@
         if (state.menu === 'victory') return;
         
         if (state.menu === 'victory_option') {
+            sfx.blip();
             state.menu = 'victory_end';
             state.dialogText = "Morgen wird wieder\nein anstrengender\nTag.";
             state.dialogTimer = 4;
@@ -371,9 +474,17 @@
             return;
         }
 
-        if (state.menu === 'dialog' && state.dialogTimer > 0) return;
         if (state.menu === 'dialog') {
-            state.menu = 'main';
+            // Mimimi Text ist nicht überspringbar
+            if (state.dialogText === "Mimimi") return; 
+
+            sfx.blip();
+            if (state.nextMenu === 'reset') {
+                resetGame();
+            } else {
+                state.menu = state.nextMenu || 'main';
+                state.nextMenu = 'main';
+            }
             return;
         }
 
@@ -383,13 +494,21 @@
                 const isLeftCol = x < 120;
                 if (isTopRow && isLeftCol) { 
                     if (state.isParalyzed) {
+                        sfx.error();
                         state.dialogText = "Geh lieber auf's Klo";
                         state.menu = 'dialog';
                         state.dialogTimer = 1;
-                    } else { state.menu = 'fight'; }
+                    } else { 
+                        sfx.blip();
+                        state.menu = 'fight'; 
+                    }
                 }
-                else if (!isTopRow && isLeftCol) { state.menu = 'item'; }
-                else if (!isTopRow && !isLeftCol) {
+                else if (!isTopRow && isLeftCol) { 
+                    sfx.blip();
+                    state.menu = 'item'; 
+                }
+                else if (!isTopRow && !isLeftCol) { // RUN GEWÄHLT
+                    sfx.error();
                     if (state.isParalyzed) {
                         state.dialogText = "Geh lieber auf's Klo";
                         state.menu = 'dialog';
@@ -398,20 +517,40 @@
                         state.dialogText = "Du kannst doch\ngar nicht rennen,\nFettsack!";
                         state.menu = 'dialog';
                         state.dialogTimer = 3; 
+                        state.nextMenu = 'run_menu'; // Danach ab ins neue Run-Menü
                     }
                 }
             }
         } 
+        else if (state.menu === 'run_menu') {
+            if (y > 104) {
+                const isTopRow = y < 124;
+                if (isTopRow) { 
+                    // RAGE QUIT
+                    sfx.error();
+                    state.dialogText = "Mimimi";
+                    state.menu = 'dialog';
+                    state.dialogTimer = 3;
+                    state.nextMenu = 'reset'; // Danach beenden/zurücksetzen
+                } else {
+                    // ZURÜCK
+                    sfx.blip();
+                    state.menu = 'main';
+                }
+            }
+        }
         else if (state.menu === 'fight') {
             if (y > 104) {
                 const isTopRow = y < 124;
                 const isLeftCol = x < 85;
                 if (isTopRow && isLeftCol) { 
                     if (state.kj < state.maxKj) {
+                        sfx.drink();
                         state.kj += 1;
                         state.beersSinceKlo += 1; 
                         state.flyingBeers.push({ progress: 0 });
                         if (state.kj >= state.maxKj) {
+                            sfx.victory();
                             state.kj = state.maxKj;
                             state.gameEndTime = Date.now();
                             state.dialogText = "Jetzt scheiße ich\nmeinem Bruder auf\nden Hocker.";
@@ -421,12 +560,18 @@
                             if (state.beersSinceKlo >= 10) state.isParalyzed = true; 
                             state.menu = 'main';
                         }
+                    } else {
+                        sfx.error();
                     }
                 } else if (!isTopRow && isLeftCol) { 
+                    sfx.predigt();
                     state.dialogText = "7 Jahre...";
                     state.menu = 'dialog';
                     state.dialogTimer = 3;
-                } else { state.menu = 'main'; }
+                } else { 
+                    sfx.blip();
+                    state.menu = 'main'; 
+                }
             }
         }
         else if (state.menu === 'item') {
@@ -434,6 +579,7 @@
                 const isTopRow = y < 124;
                 const isLeftCol = x < 85; 
                 if (isTopRow && isLeftCol) { 
+                    sfx.item();
                     state.isParalyzed = false; 
                     state.beersSinceKlo = 0;   
                     state.dialogText = "Aaah, das tut\ngut.";
@@ -441,31 +587,37 @@
                     state.dialogTimer = 1; 
                 } 
                 else if (!isTopRow && isLeftCol) {
-                    // SUPERSOLDAT - Hebt Blur und Langsamkeit auf
                     if (state.isParalyzed) {
+                        sfx.error();
                         state.dialogText = "Geh lieber auf's Klo";
                         state.menu = 'dialog';
                         state.dialogTimer = 1;
                         return;
                     }
+                    sfx.item();
                     state.isBlurry = false;
-                    state.gameSpeed = 1.0; // Geschwindigkeit wieder normal
+                    state.gameSpeed = 1.0; 
                     state.dialogText = "Weiter so,\nSoldat!";
                     state.menu = 'dialog';
                     state.dialogTimer = 2; 
                 } 
                 else if (isTopRow && !isLeftCol) {
                     if (state.isParalyzed) {
+                        sfx.error();
                         state.dialogText = "Geh lieber auf's Klo";
                         state.menu = 'dialog';
                         state.dialogTimer = 1;
                         return;
                     }
+                    sfx.item();
                     state.menu = 'main'; 
                     state.activeFood = Math.floor(Math.random() * foodSprites.length); 
                     state.foodAnimProgress = 0;
                 } 
-                else if (!isTopRow && !isLeftCol) { state.menu = 'main'; }
+                else if (!isTopRow && !isLeftCol) { 
+                    sfx.blip();
+                    state.menu = 'main'; 
+                }
             }
         }
     });
